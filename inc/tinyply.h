@@ -185,7 +185,7 @@ using namespace tinyply;
 using namespace std;
 
 template<typename T, typename T2> inline T2 endian_swap(const T & v) { return v; }
-template<> inline uint16_t endian_swap<uint16_t, uint16_t>(const uint16_t & v) { return (v << 8) | (v >> 8); }
+template<> inline uint16_t endian_swap<uint16_t, uint16_t>(const uint16_t & v) { return uint16_t((v << 8) | (v >> 8)); }
 template<> inline uint32_t endian_swap<uint32_t, uint32_t>(const uint32_t & v) { return (v << 24) | ((v << 8) & 0x00ff0000) | ((v >> 8) & 0x0000ff00) | (v >> 24); }
 template<> inline uint64_t endian_swap<uint64_t, uint64_t>(const uint64_t & v)
 {
@@ -198,9 +198,9 @@ template<> inline uint64_t endian_swap<uint64_t, uint64_t>(const uint64_t & v)
           ((v & 0x00ff000000000000LL) >> 40) |
           ((v & 0xff00000000000000LL) >> 56));
 }
-template<> inline int16_t endian_swap<int16_t, int16_t>(const int16_t & v) { uint16_t r = endian_swap<uint16_t, uint16_t>(*(uint16_t*)&v); return *(int16_t*)&r; }
-template<> inline int32_t endian_swap<int32_t, int32_t>(const int32_t & v) { uint32_t r = endian_swap<uint32_t, uint32_t>(*(uint32_t*)&v); return *(int32_t*)&r; }
-template<> inline int64_t endian_swap<int64_t, int64_t>(const int64_t & v) { uint64_t r = endian_swap<uint64_t, uint64_t>(*(uint64_t*)&v); return *(int64_t*)&r; }
+template<> inline int16_t endian_swap<int16_t, int16_t>(const int16_t & v) { uint16_t r = endian_swap<uint16_t, uint16_t>(reinterpret_cast<const uint16_t&>(v)); return reinterpret_cast<const int16_t&>(r); }
+template<> inline int32_t endian_swap<int32_t, int32_t>(const int32_t & v) { uint32_t r = endian_swap<uint32_t, uint32_t>(reinterpret_cast<const uint32_t&>(v)); return reinterpret_cast<const int32_t&>(r); }
+template<> inline int64_t endian_swap<int64_t, int64_t>(const int64_t & v) { uint64_t r = endian_swap<uint64_t, uint64_t>(reinterpret_cast<const uint64_t&>(v)); return reinterpret_cast<const int64_t&>(r); }
 template<> inline float endian_swap<uint32_t, float>(const uint32_t & v) { union { float f; uint32_t i; }; i = endian_swap<uint32_t, uint32_t>(v); return f; }
 template<> inline double endian_swap<uint64_t, double>(const uint64_t & v) { union { double d; uint64_t i; }; i = endian_swap<uint64_t, uint64_t>(v); return d; }
 
@@ -290,8 +290,8 @@ struct PlyFile::PlyFileImpl
         if (cursorIt != userData.end()) f.helper = &cursorIt->second;
         else f.skip = true;
 
-        f.prop_stride = PropertyTable[property.propertyType].stride;
-        if (property.isList) f.list_stride = PropertyTable[property.listType].stride;
+        f.prop_stride = size_t(PropertyTable[property.propertyType].stride);
+        if (property.isList) f.list_stride = size_t(PropertyTable[property.listType].stride);
 
         lookups.push_back(f);
       }
@@ -360,13 +360,17 @@ template<typename T> void ply_cast_ascii(void * dest, std::istream & is)
 
 int64_t find_element(const std::string & key, const std::vector<PlyElement> & list)
 {
-  for (size_t i = 0; i < list.size(); i++) if (list[i].name == key) return i;
+  for (size_t i = 0; i < list.size(); i++)
+    if (list[i].name == key)
+      return int64_t(i);
   return -1;
 }
 
 int64_t find_property(const std::string & key, const std::vector<PlyProperty> & list)
 {
-  for (size_t i = 0; i < list.size(); ++i) if (list[i].name == key) return i;
+  for (size_t i = 0; i < list.size(); ++i)
+    if (list[i].name == key)
+      return int64_t(i);
   return -1;
 }
 
@@ -393,7 +397,7 @@ bool PlyFile::PlyFileImpl::parse_header(std::istream & is)
 void PlyFile::PlyFileImpl::read_header_text(std::string line, std::istream & is, std::vector<std::string>& place, int erase)
 {
   (void)is;
-  place.push_back((erase > 0) ? line.erase(0, erase) : line);
+  place.push_back((erase > 0) ? line.erase(0, size_t(erase)) : line);
 }
 
 void PlyFile::PlyFileImpl::read_header_format(std::istream & is)
@@ -419,7 +423,7 @@ size_t PlyFile::PlyFileImpl::read_property_binary(const Type & t, const size_t &
 {
   (void)t;
   destOffset += stride;
-  is.read((char*)dest, stride);
+  is.read(static_cast<char*>(dest), long(stride));
   return stride;
 }
 
@@ -428,8 +432,8 @@ size_t PlyFile::PlyFileImpl::read_property_ascii(const Type & t, const size_t & 
   destOffset += stride;
   switch (t)
   {
-  case Type::INT8:       *((int8_t *)dest) = ply_read_ascii<int32_t>(is);   break;
-  case Type::UINT8:      *((uint8_t *)dest) = ply_read_ascii<uint32_t>(is); break;
+  case Type::INT8:       *reinterpret_cast<int8_t*>(dest)  = int8_t(ply_read_ascii<int32_t>(is));   break;
+  case Type::UINT8:      *reinterpret_cast<uint8_t*>(dest) = uint8_t(ply_read_ascii<uint32_t>(is)); break;
   case Type::INT16:      ply_cast_ascii<int16_t>(dest, is);                 break;
   case Type::UINT16:     ply_cast_ascii<uint16_t>(dest, is);                break;
   case Type::INT32:      ply_cast_ascii<int32_t>(dest, is);                 break;
@@ -462,7 +466,7 @@ void PlyFile::PlyFileImpl::write_property_ascii(Type t, std::ostream & os, uint8
 void PlyFile::PlyFileImpl::write_property_binary(Type t, std::ostream & os, uint8_t * src, size_t & srcOffset, const size_t & stride)
 {
   (void)t;
-  os.write((char *)src, stride);
+  os.write(reinterpret_cast<char*>(src), long(stride));
   srcOffset += stride;
 }
 
@@ -511,7 +515,7 @@ void PlyFile::PlyFileImpl::read(std::istream & is)
           // otherwise, we can allocate up front, skipping the first pass.
           const size_t list_size_multiplier = (entry.second.data->isList ? entry.second.list_size_hint : 1);
           auto bytes_per_property = entry.second.data->count * PropertyTable[entry.second.data->t].stride * list_size_multiplier;
-          bytes_per_property *= unique_data_count[b.get()];
+          bytes_per_property *= size_t(unique_data_count[b.get()]);
           b->buffer = Buffer(bytes_per_property);
         }
 
@@ -678,7 +682,7 @@ std::shared_ptr<PlyData> PlyFile::PlyFileImpl::request_properties_from_element(c
   if (elementIndex >= 0)
   {
     // We found the element
-    const PlyElement & element = elements[elementIndex];
+    const PlyElement & element = elements[size_t(elementIndex)];
 
     helper.data->count = element.size;
 
@@ -689,7 +693,7 @@ std::shared_ptr<PlyData> PlyFile::PlyFileImpl::request_properties_from_element(c
       if (propertyIndex >= 0)
       {
         // We found the property
-        const PlyProperty & property = element.properties[propertyIndex];
+        const PlyProperty & property = element.properties[size_t(propertyIndex)];
         helper.data->t = property.propertyType;
         helper.data->isList = property.isList;
         auto result = userData.insert(std::pair<uint32_t, ParsingHelper>(hash_fnv1a(element.name + property.name), helper));
@@ -736,7 +740,7 @@ void PlyFile::PlyFileImpl::add_properties_to_element(const std::string & element
   const int64_t idx = find_element(elementKey, elements);
   if (idx >= 0)
   {
-    PlyElement & e = elements[idx];
+    PlyElement & e = elements[size_t(idx)];
     create_property_on_element(e);
   }
   else
@@ -767,16 +771,16 @@ void PlyFile::PlyFileImpl::parse_data(std::istream & is, bool firstPass)
   {
     const size_t stride = PropertyTable[t].stride; // @todo - this is already precomputed
     destOffset += stride;
-    _is.read((char*)dst, stride);
+    _is.read(reinterpret_cast<char*>(dst), long(stride));
 
     if (isBigEndian)
     {
       switch (t)
       {
-      case Type::INT16:  endian_swap<int16_t, int16_t>(*(int16_t*)dst);    break;
-      case Type::UINT16: endian_swap<uint16_t, uint16_t>(*(uint16_t*)dst); break;
-      case Type::INT32:  endian_swap<int32_t, int32_t>(*(int32_t*)dst);    break;
-      case Type::UINT32: endian_swap<uint32_t, uint32_t>(*(uint32_t*)dst); break;
+      case Type::INT16:  endian_swap< int16_t,  int16_t>(*reinterpret_cast< int16_t*>(dst)); break;
+      case Type::UINT16: endian_swap<uint16_t, uint16_t>(*reinterpret_cast<uint16_t*>(dst)); break;
+      case Type::INT32:  endian_swap< int32_t,  int32_t>(*reinterpret_cast< int32_t*>(dst)); break;
+      case Type::UINT32: endian_swap<uint32_t, uint32_t>(*reinterpret_cast<uint32_t*>(dst)); break;
       default: break;
       }
     }
@@ -804,7 +808,7 @@ void PlyFile::PlyFileImpl::parse_data(std::istream & is, bool firstPass)
       {
         if(auto s = (f.prop_stride+1); scratch.size() < s)
           scratch.resize(s);
-        _is.read((char*)scratch.data(), f.prop_stride);
+        _is.read(reinterpret_cast<char*>(scratch.data()), long(f.prop_stride));
         return f.prop_stride;
       }
       read_list_binary(p.listType, &listSize, dummyCount, _is); // the list size (does not count for memory alloc)
