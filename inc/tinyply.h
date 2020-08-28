@@ -687,7 +687,7 @@ std::shared_ptr<PlyData> PlyFile::PlyFileImpl::request_properties_from_element(c
     helper.data->count = element.size;
 
     // Find each of the keys
-    for (auto key : propertyKeys)
+    for (const auto& key : propertyKeys)
     {
       const int64_t propertyIndex = find_property(key, element.properties);
       if (propertyIndex >= 0)
