@@ -53,19 +53,6 @@ struct PropertyInfo
   std::string str;
 };
 
-static std::map<Type, PropertyInfo> PropertyTable
-{
-  { Type::INT8,    { 1, "char" } },
-  { Type::UINT8,   { 1, "uchar" } },
-  { Type::INT16,   { 2, "short" } },
-  { Type::UINT16,  { 2, "ushort" } },
-  { Type::INT32,   { 4, "int" } },
-  { Type::UINT32,  { 4, "uint" } },
-  { Type::FLOAT32, { 4, "float" } },
-  { Type::FLOAT64, { 8, "double" } },
-  { Type::INVALID, { 0, "INVALID" } }
-};
-
 class Buffer
 {
   uint8_t * alias{ nullptr };
@@ -184,6 +171,24 @@ struct PlyFile
 using namespace tinyply;
 using namespace std;
 
+const std::map<Type, PropertyInfo>& propertyTable()
+{
+  static std::map<Type, PropertyInfo> PropertyTable
+  {
+    { Type::INT8,    { 1, "char" } },
+    { Type::UINT8,   { 1, "uchar" } },
+    { Type::INT16,   { 2, "short" } },
+    { Type::UINT16,  { 2, "ushort" } },
+    { Type::INT32,   { 4, "int" } },
+    { Type::UINT32,  { 4, "uint" } },
+    { Type::FLOAT32, { 4, "float" } },
+    { Type::FLOAT64, { 8, "double" } },
+    { Type::INVALID, { 0, "INVALID" } }
+  };
+  return PropertyTable;
+}
+
+
 template<typename T, typename T2> inline T2 endian_swap(const T & v) { return v; }
 template<> inline uint16_t endian_swap<uint16_t, uint16_t>(const uint16_t & v) { return uint16_t((v << 8) | (v >> 8)); }
 template<> inline uint32_t endian_swap<uint32_t, uint32_t>(const uint32_t & v) { return (v << 24) | ((v << 8) & 0x00ff0000) | ((v >> 8) & 0x0000ff00) | (v >> 24); }
@@ -276,6 +281,13 @@ struct PlyFile::PlyFileImpl
 
   std::vector<std::vector<PropertyLookup>> make_property_lookup_table()
   {
+    const auto& PropertyTable{propertyTable()};
+    auto PropertyTableStride = [&](auto type)
+    {
+      auto i = PropertyTable.find(type);
+      return (i == PropertyTable.end())?0:i->second.stride;
+    };
+
     std::vector<std::vector<PropertyLookup>> element_property_lookup;
 
     for (auto & element : elements)
@@ -290,8 +302,8 @@ struct PlyFile::PlyFileImpl
         if (cursorIt != userData.end()) f.helper = &cursorIt->second;
         else f.skip = true;
 
-        f.prop_stride = size_t(PropertyTable[property.propertyType].stride);
-        if (property.isList) f.list_stride = size_t(PropertyTable[property.listType].stride);
+        f.prop_stride = size_t(PropertyTableStride(property.propertyType));
+        if (property.isList) f.list_stride = size_t(PropertyTableStride(property.listType));
 
         lookups.push_back(f);
       }
@@ -447,6 +459,13 @@ size_t PlyFile::PlyFileImpl::read_property_ascii(const Type & t, const size_t & 
 
 void PlyFile::PlyFileImpl::write_property_ascii(Type t, std::ostream & os, uint8_t * src, size_t & srcOffset)
 {
+  const auto& PropertyTable{propertyTable()};
+  auto PropertyTableStride = [&](auto type)
+  {
+    auto i = PropertyTable.find(type);
+    return (i == PropertyTable.end())?0:i->second.stride;
+  };
+
   switch (t)
   {
   case Type::INT8:       os << static_cast<int32_t>(*reinterpret_cast<int8_t*>(src));   break;
@@ -460,7 +479,7 @@ void PlyFile::PlyFileImpl::write_property_ascii(Type t, std::ostream & os, uint8
   case Type::INVALID:    throw std::invalid_argument("invalid ply property");
   }
   os << " ";
-  srcOffset += PropertyTable[t].stride;
+  srcOffset += PropertyTableStride(t);
 }
 
 void PlyFile::PlyFileImpl::write_property_binary(Type t, std::ostream & os, uint8_t * src, size_t & srcOffset, const size_t & stride)
@@ -472,6 +491,13 @@ void PlyFile::PlyFileImpl::write_property_binary(Type t, std::ostream & os, uint
 
 void PlyFile::PlyFileImpl::read(std::istream & is)
 {
+  const auto& PropertyTable{propertyTable()};
+  auto PropertyTableStride = [&](auto type)
+  {
+    auto i = PropertyTable.find(type);
+    return (i == PropertyTable.end())?0:i->second.stride;
+  };
+
   std::vector<std::shared_ptr<PlyData>> buffers;
   for (auto & entry : userData) buffers.push_back(entry.second.data);
 
@@ -514,7 +540,7 @@ void PlyFile::PlyFileImpl::read(std::istream & is)
         {
           // otherwise, we can allocate up front, skipping the first pass.
           const size_t list_size_multiplier = (entry.second.data->isList ? entry.second.list_size_hint : 1);
-          auto bytes_per_property = entry.second.data->count * PropertyTable[entry.second.data->t].stride * list_size_multiplier;
+          auto bytes_per_property = entry.second.data->count * PropertyTableStride(entry.second.data->t) * list_size_multiplier;
           bytes_per_property *= size_t(unique_data_count[b.get()]);
           b->buffer = Buffer(bytes_per_property);
         }
@@ -531,7 +557,7 @@ void PlyFile::PlyFileImpl::read(std::istream & is)
     for (auto & b : buffers)
     {
       uint8_t * data_ptr = b->buffer.get();
-      const size_t stride = PropertyTable[b->t].stride;
+      const size_t stride = PropertyTableStride(b->t);
       const size_t buffer_size_bytes = b->buffer.size_bytes();
 
       switch (b->t)
@@ -625,6 +651,13 @@ void PlyFile::PlyFileImpl::write_ascii_internal(std::ostream & os)
 
 void PlyFile::PlyFileImpl::write_header(std::ostream & os)
 {
+  const auto& PropertyTable{propertyTable()};
+  auto PropertyTableStr = [&](auto type)
+  {
+    auto i = PropertyTable.find(type);
+    return (i == PropertyTable.end())?0:i->second.str;
+  };
+
   const std::locale & fixLoc = std::locale("C");
   os.imbue(fixLoc);
 
@@ -641,12 +674,12 @@ void PlyFile::PlyFileImpl::write_header(std::ostream & os)
     {
       if (p.isList)
       {
-        os << "property list " << PropertyTable[p.listType].str << " "
-           << PropertyTable[p.propertyType].str << " " << p.name << "\n";
+        os << "property list " << PropertyTableStr(p.listType) << " "
+           << PropertyTableStr(p.propertyType) << " " << p.name << "\n";
       }
       else
       {
-        os << "property " << PropertyTable[p.propertyType].str << " " << p.name << "\n";
+        os << "property " << PropertyTableStr(p.propertyType) << " " << p.name << "\n";
       }
     }
   }
@@ -769,7 +802,14 @@ void PlyFile::PlyFileImpl::parse_data(std::istream & is, bool firstPass)
   // but we need the correct little-endian list count as we read the file.
   auto read_list_binary = [this](const Type & t, void * dst, size_t & destOffset, std::istream & _is)
   {
-    const size_t stride = PropertyTable[t].stride; // @todo - this is already precomputed
+    const auto& PropertyTable{propertyTable()};
+    auto PropertyTableStride = [&](auto type)
+    {
+      auto i = PropertyTable.find(type);
+      return (i == PropertyTable.end())?0:i->second.stride;
+    };
+
+    const size_t stride = PropertyTableStride(t); // @todo - this is already precomputed
     destOffset += stride;
     _is.read(reinterpret_cast<char*>(dst), long(stride));
 
