@@ -289,11 +289,12 @@ struct PlyFile::PlyFileImpl
     };
 
     std::vector<std::vector<PropertyLookup>> element_property_lookup;
+    element_property_lookup.reserve(elements.size());
 
     for (auto & element : elements)
     {
       std::vector<PropertyLookup> lookups;
-
+      lookups.reserve(element.properties.size());
       for (auto & property : element.properties)
       {
         PropertyLookup f;
@@ -499,6 +500,7 @@ void PlyFile::PlyFileImpl::read(std::istream & is)
   };
 
   std::vector<std::shared_ptr<PlyData>> buffers;
+  buffers.reserve(userData.size());
   for (auto & entry : userData) buffers.push_back(entry.second.data);
 
   // Discover if we can allocate up front without parsing the file twice
