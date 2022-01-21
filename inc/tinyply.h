@@ -58,7 +58,7 @@ class Buffer
   uint8_t * alias{ nullptr };
   struct delete_array { void operator()(uint8_t * p) { delete[] p; } };
   std::unique_ptr<uint8_t, decltype(Buffer::delete_array())> data;
-  size_t size;
+  size_t size{0};
 public:
   Buffer() {}
   Buffer(const size_t size) : data(new uint8_t[size], delete_array()), size(size) { alias = data.get(); } // allocating
