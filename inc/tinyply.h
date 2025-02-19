@@ -657,7 +657,7 @@ void PlyFile::PlyFileImpl::write_header(std::ostream & os)
   auto PropertyTableStr = [&](auto type)
   {
     auto i = PropertyTable.find(type);
-    return (i == PropertyTable.end())?0:i->second.str;
+    return (i == PropertyTable.end())?"INVALID":i->second.str;
   };
 
   const std::locale & fixLoc = std::locale("C");
